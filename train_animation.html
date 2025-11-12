@@ -29,7 +29,7 @@
     // vehicle_positions.csvをfetchして利用
     let positions = [];
     let minSec = Infinity, maxSec = -Infinity;
-  fetch('data/vehicle_positions.csv')
+  fetch('vehicle_positions.csv')
       .then(res => res.text())
       .then(text => {
         const lines = text.trim().split('\n');
