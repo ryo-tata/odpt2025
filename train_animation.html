@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>タイムスライダー列車・バスアニメーション</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <style>
+    #map { width: 100vw; height: 90vh; }
+    .slider-container { margin: 10px; }
+    .speed-btn { margin-left: 5px; }
+  </style>
+</head>
+<body>
+  <div class="slider-container">
+    <input type="range" id="timeSlider" min="0" max="0" value="0" step="1">
+    <span id="timeLabel"></span>
+    <button id="playBtn">▶️</button>
+    <button id="pauseBtn">⏸️</button>
+    <span>速度:</span>
+    <button class="speed-btn" data-speed="1">1倍</button>
+    <button class="speed-btn" data-speed="10">10倍</button>
+    <button class="speed-btn" data-speed="100">100倍</button>
+    <button class="speed-btn" data-speed="1000">1000倍</button>
+  </div>
+  <div id="map"></div>
+  <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
+  <script>
+    // vehicle_positions.csvをfetchして利用
+    let positions = [];
+    let minSec = Infinity, maxSec = -Infinity;
+  fetch('data/vehicle_positions.csv')
+      .then(res => res.text())
+      .then(text => {
+        const lines = text.trim().split('\n');
+        const header = lines[0].split(',');
+        positions = lines.slice(1).map(l => {
+          const obj = {};
+          l.split(',').forEach((v,i) => obj[header[i]] = v);
+          obj.sec = Number(obj.sec);
+          obj.lat = Number(obj.lat);
+          obj.lon = Number(obj.lon);
+          minSec = Math.min(minSec, obj.sec);
+          maxSec = Math.max(maxSec, obj.sec);
+          return obj;
+        });
+        setup();
+      });
+
+    let map, markers = {}, currentSec = 0, playing = false, timer = null, speed = 1;
+    function setup() {
+      map = new maplibregl.Map({
+        container: 'map',
+        style: {
+          version: 8,
+          sources: {
+            osm: {
+              type: 'raster',
+              tiles: [
+                'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+              ],
+              tileSize: 256,
+              attribution: '© OpenStreetMap contributors'
+            }
+          },
+          layers: [
+            {
+              id: 'osm',
+              type: 'raster',
+              source: 'osm'
+            }
+          ]
+        },
+        center: [135.34, 34.26],
+        zoom: 11
+      });
+      // スライダー設定
+      const slider = document.getElementById('timeSlider');
+      slider.min = minSec;
+      slider.max = maxSec;
+      slider.value = minSec;
+      document.getElementById('timeLabel').textContent = sec2str(minSec);
+      slider.oninput = () => {
+        currentSec = Number(slider.value);
+        updateMarkers();
+      };
+      document.getElementById('playBtn').onclick = play;
+      document.getElementById('pauseBtn').onclick = pause;
+      document.querySelectorAll('.speed-btn').forEach(btn => {
+        btn.onclick = () => { speed = Number(btn.dataset.speed); };
+      });
+      updateMarkers();
+    }
+    function sec2str(sec) {
+      const h = String(Math.floor(sec/3600)).padStart(2,'0');
+      const m = String(Math.floor((sec%3600)/60)).padStart(2,'0');
+      const s = String(Math.floor(sec%60)).padStart(2,'0');
+      return `${h}:${m}:${s}`;
+    }
+    function updateMarkers() {
+      document.getElementById('timeLabel').textContent = sec2str(currentSec);
+      // 既存マーカー削除
+      for (const id in markers) { markers[id].remove(); }
+      markers = {};
+      // 現在時刻の全車両を表示
+      positions.filter(p => p.sec === currentSec).forEach(p => {
+        // 電車もバスもパステルブルーの丸い点で統一
+  const el = document.createElement('div');
+  el.style.width = '18px';
+  el.style.height = '18px';
+  el.style.background = '#7ec8e3'; // パステルブルー
+  el.style.borderRadius = '50%';
+  el.style.border = '2px solid #fff';
+  el.style.boxShadow = '0 0 4px #888';
+  el.style.display = 'block';
+  el.style.padding = '0';
+  el.style.margin = '0';
+  el.title = p.trip_id;
+  markers[p.trip_id] = new maplibregl.Marker({element: el}).setLngLat([p.lon, p.lat]).addTo(map);
+      });
+      document.getElementById('timeSlider').value = currentSec;
+    }
+    function play() {
+      if (playing) return;
+      playing = true;
+      timer = setInterval(() => {
+        if (currentSec < maxSec) {
+          currentSec += speed;
+          if (currentSec > maxSec) currentSec = maxSec;
+          updateMarkers();
+        } else {
+          pause();
+        }
+      }, 100); // 100msごと（10Hz）
+    }
+    function pause() {
+      playing = false;
+      clearInterval(timer);
+    }
+  </script>
+</body>
+</html>
